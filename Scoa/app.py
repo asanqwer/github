@@ -1,13 +1,17 @@
 import os
+import random
+import requests
+import threading
+import time
 from flask import Flask, request
 from dotenv import load_dotenv
 from telegram import Bot, Update
-from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters, CallbackContext
-from db import users_col, status_col
+from telegram.ext import Dispatcher, CommandHandler, CallbackContext
+from telegram.ext import MessageHandler, Filters
+from db import users_col, status_col, predictions_col
 from prediction import send_prediction
 from utils import STICKERS, determine_win, get_result_for_period
-import threading
-import time
+from queue import Queue
 
 load_dotenv()
 
@@ -16,7 +20,8 @@ app = Flask(__name__)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 bot = Bot(token=BOT_TOKEN)
 
-dispatcher = Dispatcher(bot, None, workers=0)
+update_queue = Queue()
+dispatcher = Dispatcher(bot, update_queue, use_context=True)
 
 @app.route("/")
 def index():
@@ -66,22 +71,26 @@ def check_results_loop():
                         new_bal = user["balance"] + amount if win else user["balance"] - amount
                         users_col.update_one({"user_id": user["user_id"]}, {"$set": {"balance": new_bal}})
                         if win:
-                            bot.send_sticker(chat_id=user["user_id"], sticker=random.choice(STICKERS))
+                            try:
+                                bot.send_sticker(chat_id=user["user_id"], sticker=random.choice(STICKERS))
+                            except Exception as e:
+                                print(f"Error sending sticker: {e}")
 
+        time.sleep(60)
+
+def prediction_loop():
+    while True:
+        try:
+            send_prediction()
+        except Exception as e:
+            print(f"Prediction error: {e}")
         time.sleep(60)
 
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(CommandHandler("profile", profile))
 dispatcher.add_handler(CommandHandler("leaderboard", leaderboard))
 
-# Background prediction
-def prediction_loop():
-    while True:
-        send_prediction()
-        time.sleep(60)
-
 if __name__ == "__main__":
-    # Start threads
-    threading.Thread(target=prediction_loop).start()
-    threading.Thread(target=check_results_loop).start()
-    app.run(host="0.0.0.0", port=10000)
+    threading.Thread(target=prediction_loop, daemon=True).start()
+    threading.Thread(target=check_results_loop, daemon=True).start()
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))

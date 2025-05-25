@@ -1,4 +1,4 @@
-import random
+import random 
 import requests
 
 STICKERS = [
@@ -9,21 +9,23 @@ STICKERS = [
 
 def get_latest_period():
     try:
-        res = requests.get("https://api.51gameapi.com/api/webapi/GetNoaverageEmerdList")
+        res = requests.get("https://api.51gameapi.com/api/webapi/GetNoaverageEmerdList", timeout=5)
         data = res.json()
         return data["data"][0]["period"]
-    except:
+    except Exception as e:
+        print(f"Error fetching latest period: {e}")
         return None
 
 def get_result_for_period(period):
     try:
-        res = requests.get("https://api.51gameapi.com/api/webapi/GetNoaverageEmerdList")
+        res = requests.get("https://api.51gameapi.com/api/webapi/GetNoaverageEmerdList", timeout=5)
         data = res.json()
         for item in data["data"]:
             if item["period"] == period:
                 return int(item["number"])
         return None
-    except:
+    except Exception as e:
+        print(f"Error fetching result for period {period}: {e}")
         return None
 
 def random_prediction():

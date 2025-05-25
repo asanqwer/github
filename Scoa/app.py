@@ -1,7 +1,7 @@
 import os
-import requests
 import json
 import random
+import requests
 from flask import Flask, request
 from telegram import Bot, Update
 from telegram.ext import Dispatcher, CommandHandler
@@ -12,7 +12,7 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 GROUP_CHAT_ID = os.getenv("GROUP_CHAT_ID")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # Render URL like: https://your-app.onrender.com/webhook
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # Example: https://your-service-name.onrender.com
 
 bot = Bot(token=BOT_TOKEN)
 app = Flask(__name__)
@@ -31,7 +31,7 @@ def get_latest_period():
         headers = {
             "Content-Type": "application/json;charset=UTF-8",
             "Accept": "application/json",
-            "Authorization": "Bearer YOUR_TOKEN_HERE"
+            "Authorization": "Bearer YOUR_TOKEN_HERE"  # If needed
         }
         payload = {
             "pageSize": 10,
@@ -55,6 +55,7 @@ def get_random_prediction():
 def send_prediction():
     period = get_latest_period()
     if not period:
+        print("[ERROR] No period received")
         return
 
     prediction = get_random_prediction()
@@ -74,13 +75,13 @@ def send_prediction():
         print(f"[ERROR] Send failed: {e}")
 
 def start(update, context):
-    context.bot.send_message(chat_id=update.effective_chat.id, text="✅ Bot is live via webhook.")
+    context.bot.send_message(chat_id=update.effective_chat.id, text="✅ Bot is live and ready.")
 
 dispatcher.add_handler(CommandHandler("start", start))
 
 @app.route("/")
 def home():
-    return "✅ Bot Webhook is Live."
+    return "✅ Bot is running on webhook!"
 
 @app.route("/webhook", methods=["POST"])
 def webhook():

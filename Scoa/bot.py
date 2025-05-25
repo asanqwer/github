@@ -3,24 +3,17 @@ import requests
 import json
 import random
 import pytz
-import logging
 from telegram import Bot
 from telegram.ext import Updater, CommandHandler
 from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
 
-# Load .env values
 load_dotenv()
 
-# Setup
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-GROUP_CHAT_ID = "-1002609387727"
+GROUP_CHAT_ID = os.getenv("GROUP_CHAT_ID", "-1002609387727")
 bot = Bot(token=BOT_TOKEN)
 
-# Logging
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-
-# Stickers
 stickers = [
     "CAACAgQAAxkBAAKmh2f5EBjXCvSqjGVYDT9P7yjKW6_IAAKOCAACi9XoU5p5sAokI77kNgQ",
     "CAACAgQAAxkBAAKmimf5EB9GTlXRtwVB3ez1nBUKzf69AAKaDAACfx_4UvcUEDj6i_r9NgQ",
@@ -28,13 +21,12 @@ stickers = [
     "CAACAgIAAxkBAAKmkGf5EDBgwnSDovUPpQGsTjMQdU69AAL4DAACNyx5S6FYW3VBcuj4NgQ"
 ]
 
-# Get latest period
 def get_latest_period():
     url = "https://api.51gameapi.com/api/webapi/GetNoaverageEmerdList"
     headers = {
         "Content-Type": "application/json;charset=UTF-8",
         "Accept": "application/json",
-        "Authorization": "Bearer YOUR_TOKEN_HERE"  # Replace with real token if required
+        "Authorization": "Bearer YOUR_TOKEN_HERE"  # Replace with a valid token if needed
     }
     payload = {
         "pageSize": 10,
@@ -46,41 +38,47 @@ def get_latest_period():
         "timestamp": 1733117040
     }
     try:
-        response = requests.post(url, headers=headers, data=json.dumps(payload))
+        response = requests.post(url, headers=headers, data=json.dumps(payload), timeout=5)
         data = response.json()
         return int(data["data"]["list"][0]["issueNumber"]) + 1
     except Exception as e:
-        logging.error(f"Error fetching period: {e}")
+        print(f"[Error] Failed to fetch period: {e}")
         return None
 
-# Predict and send message
+def get_random_prediction():
+    return random.choice(["Big", "Small"])
+
 def send_prediction():
     period = get_latest_period()
     if not period:
-        logging.warning("Failed to get period.")
+        print("[Error] Period is None.")
         return
 
-    prediction = random.choice(["Big", "Small"])
-    message = f"[WINGO 1MINUTE]\nPeriod {period}\nChoose - {prediction}"
+    prediction = get_random_prediction()
+    message = (
+        f"[WINGO 1MINUTE]\n"
+        f"Period {period}\n"
+        f"Choose - {prediction}\n"
+        f"📑 Read /howtobet before you proceed!\n"
+        f"🔗 https://www.18sikkim.com/#/register?invitationCode=643745098970"
+    )
 
     try:
         bot.send_message(chat_id=GROUP_CHAT_ID, text=message)
         if random.random() < 0.5:
             bot.send_sticker(chat_id=GROUP_CHAT_ID, sticker=random.choice(stickers))
-        logging.info(f"Sent prediction: {message}")
+        print(f"[Sent] {message}")
     except Exception as e:
-        logging.error(f"Failed to send prediction: {e}")
+        print(f"[Error] Failed to send message: {e}")
 
-# Command handler
-def start(update, context):
+def start_command(update, context):
     context.bot.send_message(chat_id=update.effective_chat.id, text="Bot is running ✅")
 
 def main():
     updater = Updater(token=BOT_TOKEN, use_context=True)
     dispatcher = updater.dispatcher
-    dispatcher.add_handler(CommandHandler('start', start))
+    dispatcher.add_handler(CommandHandler('start', start_command))
 
-    # Start scheduler
     scheduler = BackgroundScheduler(timezone=pytz.utc)
     scheduler.add_job(send_prediction, 'interval', minutes=1)
     scheduler.start()
@@ -88,5 +86,5 @@ def main():
     updater.start_polling()
     updater.idle()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

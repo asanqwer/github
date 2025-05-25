@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from telegram import Bot, Update
 from telegram.ext import Dispatcher, CommandHandler, CallbackContext
 from telegram.utils.request import Request
+from queue import Queue
 
 from db import users_col, status_col, predictions_col
 from prediction import send_prediction
@@ -20,22 +21,29 @@ logging.basicConfig(level=logging.INFO)
 app = Flask(__name__)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-bot = Bot(token=BOT_TOKEN, request=Request(con_pool_size=8))
+WEBHOOK_URL = "https://sikkimbot.onrender.com/webhook"  # Update this to your Render domain + /webhook
 
-# Dispatcher setup with an update_queue
-from queue import Queue
+bot = Bot(token=BOT_TOKEN, request=Request(con_pool_size=8))
 update_queue = Queue()
 dispatcher = Dispatcher(bot, update_queue, workers=4, use_context=True)
 
 @app.route("/")
 def index():
-    return "Bot is running."
+    return "🤖 SikkimBot is running."
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
     dispatcher.process_update(update)
     return "ok"
+
+def set_webhook():
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook"
+    response = requests.post(url, data={"url": WEBHOOK_URL})
+    if response.status_code == 200:
+        logging.info("✅ Webhook set successfully")
+    else:
+        logging.error(f"❌ Failed to set webhook: {response.text}")
 
 def start(update, context: CallbackContext):
     user = update.effective_user
@@ -91,7 +99,7 @@ def prediction_loop():
             logging.error(f"[prediction_loop] Error: {e}")
         time.sleep(60)
 
-# Handlers
+# Telegram Handlers
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(CommandHandler("profile", profile))
 dispatcher.add_handler(CommandHandler("leaderboard", leaderboard))
@@ -99,4 +107,10 @@ dispatcher.add_handler(CommandHandler("leaderboard", leaderboard))
 if __name__ == "__main__":
     threading.Thread(target=prediction_loop).start()
     threading.Thread(target=check_results_loop).start()
-    app.run(host="0.0.0.0", port=10000)
+    
+    # Set webhook only on deploy (prevent multiple set calls)
+    if os.getenv("FLASK_ENV") != "development":
+        set_webhook()
+
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)

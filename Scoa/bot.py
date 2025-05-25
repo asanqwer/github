@@ -2,17 +2,21 @@ import os
 import requests
 import json
 import random
-import pytz
-from telegram import Bot
-from telegram.ext import Updater, CommandHandler
+from flask import Flask, request
+from telegram import Bot, Update
+from telegram.ext import Dispatcher, CommandHandler
 from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
 
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-GROUP_CHAT_ID = os.getenv("GROUP_CHAT_ID", "-1002609387727")
+GROUP_CHAT_ID = os.getenv("GROUP_CHAT_ID")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # Render URL like: https://your-app.onrender.com/webhook
+
 bot = Bot(token=BOT_TOKEN)
+app = Flask(__name__)
+dispatcher = Dispatcher(bot=bot, update_queue=None, workers=0, use_context=True)
 
 stickers = [
     "CAACAgQAAxkBAAKmh2f5EBjXCvSqjGVYDT9P7yjKW6_IAAKOCAACi9XoU5p5sAokI77kNgQ",
@@ -22,27 +26,27 @@ stickers = [
 ]
 
 def get_latest_period():
-    url = "https://api.51gameapi.com/api/webapi/GetNoaverageEmerdList"
-    headers = {
-        "Content-Type": "application/json;charset=UTF-8",
-        "Accept": "application/json",
-        "Authorization": "Bearer YOUR_TOKEN_HERE"  # Replace with a valid token if needed
-    }
-    payload = {
-        "pageSize": 10,
-        "pageNo": 1,
-        "typeId": 1,
-        "language": 0,
-        "random": "6fadc24ccf2c4ed4afb5a1a5f84d2ba4",
-        "signature": "4E071E587A80572ED6065D6F135F3ABE",
-        "timestamp": 1733117040
-    }
     try:
-        response = requests.post(url, headers=headers, data=json.dumps(payload), timeout=5)
+        url = "https://api.51gameapi.com/api/webapi/GetNoaverageEmerdList"
+        headers = {
+            "Content-Type": "application/json;charset=UTF-8",
+            "Accept": "application/json",
+            "Authorization": "Bearer YOUR_TOKEN_HERE"
+        }
+        payload = {
+            "pageSize": 10,
+            "pageNo": 1,
+            "typeId": 1,
+            "language": 0,
+            "random": "6fadc24ccf2c4ed4afb5a1a5f84d2ba4",
+            "signature": "4E071E587A80572ED6065D6F135F3ABE",
+            "timestamp": 1733117040
+        }
+        response = requests.post(url, headers=headers, data=json.dumps(payload))
         data = response.json()
         return int(data["data"]["list"][0]["issueNumber"]) + 1
     except Exception as e:
-        print(f"[Error] Failed to fetch period: {e}")
+        print(f"[ERROR] API failed: {e}")
         return None
 
 def get_random_prediction():
@@ -51,7 +55,6 @@ def get_random_prediction():
 def send_prediction():
     period = get_latest_period()
     if not period:
-        print("[Error] Period is None.")
         return
 
     prediction = get_random_prediction()
@@ -67,24 +70,30 @@ def send_prediction():
         bot.send_message(chat_id=GROUP_CHAT_ID, text=message)
         if random.random() < 0.5:
             bot.send_sticker(chat_id=GROUP_CHAT_ID, sticker=random.choice(stickers))
-        print(f"[Sent] {message}")
     except Exception as e:
-        print(f"[Error] Failed to send message: {e}")
+        print(f"[ERROR] Send failed: {e}")
 
-def start_command(update, context):
-    context.bot.send_message(chat_id=update.effective_chat.id, text="Bot is running ✅")
+def start(update, context):
+    context.bot.send_message(chat_id=update.effective_chat.id, text="✅ Bot is live via webhook.")
 
-def main():
-    updater = Updater(token=BOT_TOKEN, use_context=True)
-    dispatcher = updater.dispatcher
-    dispatcher.add_handler(CommandHandler('start', start_command))
+dispatcher.add_handler(CommandHandler("start", start))
 
-    scheduler = BackgroundScheduler(timezone=pytz.utc)
-    scheduler.add_job(send_prediction, 'interval', minutes=1)
-    scheduler.start()
+@app.route("/")
+def home():
+    return "✅ Bot Webhook is Live."
 
-    updater.start_polling()
-    updater.idle()
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    if request.method == "POST":
+        update = Update.de_json(request.get_json(force=True), bot)
+        dispatcher.process_update(update)
+    return "OK"
+
+# Schedule predictions every 1 minute
+scheduler = BackgroundScheduler()
+scheduler.add_job(send_prediction, 'interval', minutes=1)
+scheduler.start()
 
 if __name__ == "__main__":
-    main()
+    bot.set_webhook(f"{WEBHOOK_URL}/webhook")
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))

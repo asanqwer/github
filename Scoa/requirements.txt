@@ -1,4 +1,5 @@
+Flask==2.2.5
 python-telegram-bot==13.15
-requests
 apscheduler
+requests
 python-dotenv
